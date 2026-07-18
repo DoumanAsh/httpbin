@@ -1,6 +1,7 @@
 # httpbin
 
 [![Rust](https://github.com/DoumanAsh/httpbin/actions/workflows/rust.yml/badge.svg)](https://github.com/DoumanAsh/httpbin/actions/workflows/rust.yml)
+[![Hub](https://img.shields.io/badge/Docker-Hub-2496ed.svg)](https://hub.docker.com/r/douman/httpbin/tags)
 
 Simple HTTP echo server to provide endpoint that echoes back request data.
 

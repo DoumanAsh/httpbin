@@ -13,6 +13,10 @@ use hyper::service::Service;
 
 pub const ECHO_SERVER_HEADER_PREFIX: &str = "x-echo-";
 
+struct HttpParams {
+    status: http::StatusCode,
+}
+
 pub struct RequestParams {
     method: Method,
     uri: Uri,
@@ -25,8 +29,8 @@ impl fmt::Debug for RequestParams {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         let elapsed = self.time.elapsed();
         fmt.debug_map()
-           .entry(&"method", &self.method)
-           .entry(&"uri", &self.uri)
+           .entry(&"method", &self.method.as_str())
+           .entry(&"uri", &self.uri.path())
            .entry(&"headers", &self.headers)
            .entry(&"elapsed", &elapsed)
            .finish()
@@ -38,6 +42,7 @@ pub struct EchoServer;
 pub struct ResponseFuture {
     delay: Option<time::Sleep>,
     body: RequestParams,
+    http_params: HttpParams,
 }
 
 impl Future for ResponseFuture {
@@ -61,7 +66,9 @@ impl Future for ResponseFuture {
             }
         }
 
-        task::Poll::Ready(Ok(Response::new(format!("{:#?}", this.body))))
+        let mut response = Response::new(format!("{:#?}", this.body));
+        *response.status_mut() = this.http_params.status;
+        task::Poll::Ready(Ok(response))
     }
 }
 
@@ -76,11 +83,16 @@ impl Service<Request<Incoming>> for EchoServer {
 
         let mut delay = None;
         let time = time::Instant::now();
+        let mut status = http::StatusCode::OK;
         for (name, value) in headers.iter() {
             if let Some(param) = name.as_str().strip_prefix(ECHO_SERVER_HEADER_PREFIX) {
                 if param.eq_ignore_ascii_case("delay") {
                     if let Ok(duration) = timeout_context::try_parse_timeout(value.as_bytes()) {
                         delay = Some(tokio::time::sleep_until(time + duration));
+                    }
+                } else if param.eq_ignore_ascii_case("status") {
+                    if let Ok(new_status) = http::StatusCode::from_bytes(value.as_bytes()) {
+                        status = new_status;
                     }
                 }
             }
@@ -95,6 +107,9 @@ impl Service<Request<Incoming>> for EchoServer {
         ResponseFuture {
             delay,
             body,
+            http_params: HttpParams {
+                status
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ Simple HTTP echo server to provide endpoint that echoes back request data.
 Behavior of server can be configured via `x-echo-*` headers:
 
 - `x-echo-delay` - Specifies the delay before sending response. Expects [grpc-timeout value](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-HTTP2.md)
+- `x-echo-status` - Specifies status code of the response.
 
 ## Environment variables
 

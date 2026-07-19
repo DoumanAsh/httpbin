@@ -2,9 +2,10 @@
 
 #![allow(clippy::style)]
 
-use core::{fmt, convert, task};
-use core::future::Future;
+use std::io;
 use core::pin::Pin;
+use core::future::Future;
+use core::{convert, task};
 
 use tokio::time;
 use hyper::{Request, Response, Uri, Method, HeaderMap};
@@ -12,6 +13,7 @@ use hyper::body::Incoming;
 use hyper::service::Service;
 
 pub const ECHO_SERVER_HEADER_PREFIX: &str = "x-echo-";
+const APP_JSON: http::HeaderValue = http::HeaderValue::from_static("application/json");
 
 struct HttpParams {
     status: http::StatusCode,
@@ -24,16 +26,34 @@ pub struct RequestParams {
     time: time::Instant,
 }
 
-impl fmt::Debug for RequestParams {
-    #[inline(always)]
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl RequestParams {
+    pub fn write(&self, out: &mut impl io::Write) -> io::Result<()> {
+        const TAB: &str = "    ";
+
         let elapsed = self.time.elapsed();
-        fmt.debug_map()
-           .entry(&"method", &self.method.as_str())
-           .entry(&"uri", &self.uri.path())
-           .entry(&"headers", &self.headers)
-           .entry(&"elapsed", &elapsed)
-           .finish()
+        out.write_all("{\n".as_bytes())?;
+        out.write_fmt(format_args!("{TAB}\"method\": \"{}\",\n", self.method))?;
+        out.write_fmt(format_args!("{TAB}\"uri\": \"{}\",\n", self.uri.path()))?;
+
+        let headers_len = self.headers.len();
+
+        out.write_fmt(format_args!("{TAB}\"headers\": {{\n"))?;
+        for (idx, (name, value)) in self.headers.iter().enumerate() {
+            if let Ok(value) = value.to_str() {
+                out.write_fmt(format_args!("{TAB}{TAB}\"{name}\": \"{value}\""))?;
+                if idx < (headers_len - 1) {
+                    out.write_all(",\n".as_bytes())?;
+                } else {
+                    out.write_all("\n".as_bytes())?;
+                }
+            }
+        }
+        out.write_all(TAB.as_bytes())?;
+        out.write_all("},\n".as_bytes())?;
+
+        out.write_fmt(format_args!("{TAB}\"elapsed\": \"{:?}\"\n", elapsed))?;
+        out.write_all("}".as_bytes())?;
+        Ok(())
     }
 }
 
@@ -66,8 +86,14 @@ impl Future for ResponseFuture {
             }
         }
 
-        let mut response = Response::new(format!("{:#?}", this.body));
+        let mut body = Vec::<u8>::new();
+        let _ = this.body.write(&mut body);
+        let body = unsafe {
+            String::from_utf8_unchecked(body)
+        };
+        let mut response = Response::new(body);
         *response.status_mut() = this.http_params.status;
+        response.headers_mut().insert(http::header::CONTENT_TYPE, APP_JSON);
         task::Poll::Ready(Ok(response))
     }
 }

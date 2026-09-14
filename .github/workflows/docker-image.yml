@@ -24,6 +24,7 @@ on:
 env:
   DOCKER_REGISTRY: docker.io
   GITHUB_REGISTRY: ghcr.io
+  QUAY_REGISTRY: quay.io
   DOCKER_IMAGE_NAME: douman/httpbin
   GITHUB_IMAGE_NAME: doumanash/httpbin
 
@@ -75,20 +76,32 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
+      - name: Log into ${{ env.QUAY_REGISTRY }} registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.QUAY_REGISTRY }}
+          username: doumanash+httpbin-ci
+          ## Set in repo Settings->Secrets->New repository secret
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Test Docker image build
         id: build-docker
+        if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
         with:
           file: Dockerfile
           context: .
           platforms: linux/amd64
           load: true
           tags: |
-            ${{env.DOCKER_REGISTRY}}/${{ env.DOCKER_IMAGE_NAME }}:latest
-            ${{env.GITHUB_REGISTRY}}/${{ env.GITHUB_IMAGE_NAME }}:latest
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
 
       - name: Push Docker image
         id: push-docker
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
           file: Dockerfile
@@ -100,3 +113,5 @@ jobs:
             ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.value }}
             ${{ env.GITHUB_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:latest
             ${{ env.GITHUB_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:${{ steps.version.outputs.value }}
+            ${{ env.QUAY_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:latest
+            ${{ env.QUAY_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:${{ steps.version.outputs.value }}

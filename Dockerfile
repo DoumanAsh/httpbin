@@ -1,4 +1,4 @@
-FROM quay.io/doumanash/rust-musl:latest as build
+FROM quay.io/doumanash/rust-musl:latest AS build
 
 WORKDIR /src
 

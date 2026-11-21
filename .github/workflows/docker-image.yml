@@ -56,5 +56,4 @@ jobs:
       post_build_script: |
           VERSION=$(head -n 3 Cargo.toml | grep version | cut -d '=' -f 2 | tr -d ' ' | tr -d '"')
           echo "- Version: $VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "value=$VERSION" >> $GITHUB_OUTPUT
           echo "tags=latest $VERSION" >> "$GITHUB_OUTPUT"

@@ -4,7 +4,7 @@ WORKDIR /src
 
 COPY . /src
 
-RUN cargo build --release
+RUN cargo auditable build --release
 
 FROM scratch
 COPY --from=build /src/target/release/httpbin /httpbin

@@ -21,101 +21,40 @@ on:
       - '.github/workflows/docker-image.yml'
       - 'Dockerfile'
 
-env:
-  DOCKER_REGISTRY: docker.io
-  GITHUB_REGISTRY: ghcr.io
-  QUAY_REGISTRY: quay.io
-  DOCKER_IMAGE_NAME: douman/httpbin
-  GITHUB_IMAGE_NAME: doumanash/httpbin
-
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  container:
+    name: "${{ github.event.repository.name }}"
     if: github.event.pull_request.draft == false
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Get version
-        id: version
-        run: |
-          VERSION=$(head -n 5 Cargo.toml | grep version | cut -d '=' -f 2 | tr -d ' ' | tr -d '"')
-          echo "value=$VERSION" >> $GITHUB_OUTPUT >> "$GITHUB_OUTPUT"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-        with:
-          cache-image: false
-          platforms: arm64
-
-      - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v4
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Log into ${{ env.DOCKER_REGISTRY }} registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: douman
-          ## Set in repo Settings->Secrets->New repository secret
-          password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: Log into ${{ env.GITHUB_REGISTRY }} registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.GITHUB_REGISTRY }}
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log into ${{ env.QUAY_REGISTRY }} registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
-        with:
-          registry: ${{ env.QUAY_REGISTRY }}
-          username: doumanash+httpbin-ci
-          ## Set in repo Settings->Secrets->New repository secret
-          password: ${{ secrets.QUAY_TOKEN }}
-
-      - name: Test Docker image build
-        id: build-docker
-        if: github.event_name == 'pull_request'
-        uses: docker/build-push-action@v7
-        env:
-          DOCKER_BUILD_SUMMARY: false
-        with:
-          file: Dockerfile
-          context: .
-          platforms: linux/amd64
-          load: true
-          sbom: false
-          provenance: false
-          tags: |
-            ${{ env.DOCKER_IMAGE_NAME }}:latest
-
-      - name: Push Docker image
-        id: push-docker
-        if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          file: Dockerfile
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          sbom: false
-          provenance: false
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-            ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.version.outputs.value }}
-            ${{ env.GITHUB_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:latest
-            ${{ env.GITHUB_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:${{ steps.version.outputs.value }}
-            ${{ env.QUAY_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:latest
-            ${{ env.QUAY_REGISTRY }}/${{ env.GITHUB_IMAGE_NAME }}:${{ steps.version.outputs.value }}
+      pull-requests: write
+    uses: DoumanAsh/douman-ci/.github/workflows/release-container.yaml@master
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+      QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+    with:
+      # Make sure to create repos in all container registries using the same name as the repo
+      image_name: ${{ github.event.repository.name }}
+      annotations: |
+        org.opencontainers.image.title=${{ github.event.repository.name }}
+        org.opencontainers.image.description=${{ github.event.repository.description }}
+        org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+        org.opencontainers.image.revision=${{ github.sha }}
+      # Need dhi.io for hardened alpine image
+      dhi_login: true
+      container_file: "Dockerfile"
+      use_oci: true
+      platform: "linux"
+      archs: "amd64 arm64"
+      upload_container: ${{ github.event.pull_request.draft == false }}
+      docker_user: "douman"
+      github_user: "doumanash"
+      quay_user: "doumanash"
+      quay_bot_suffix: "httpbin-ci"
+      post_build_script: |
+          VERSION=$(head -n 3 Cargo.toml | grep version | cut -d '=' -f 2 | tr -d ' ' | tr -d '"')
+          echo "- Version: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
+          echo "tags=latest $VERSION" >> "$GITHUB_OUTPUT"
